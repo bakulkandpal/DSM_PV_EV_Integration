@@ -34,7 +34,8 @@ plots_pv = False  # Input 'True' if PV generation and its impact on feeder loads
 
 
 
-####### Calling External Functions
+
+####### Calling External Functions (Do Not Edit Below)
 soc_first_batch = (100-trip_soc_expenditure-5, 100-trip_soc_expenditure+5)  # Initial SOC for first batch of E-buses.
 soc_second_batch = (soc_required[0]-trip_soc_expenditure-5, soc_required[0]-trip_soc_expenditure+5)  # Initial SOC for second batch of E-buses.
 charging_requirements, feeder_load_15min = feeder_data_class(num_buses, soc_first_batch, soc_second_batch, battery_capacity, charger_power, num_chargers, day_of_year, time_range1, time_range2, soc_required).plots_15_mins() 
