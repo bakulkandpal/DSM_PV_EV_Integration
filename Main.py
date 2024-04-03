@@ -8,9 +8,16 @@ from peak_load_shifting import peak_shifting
 
 day_of_year = 150  # For the visual plot of combined load of a particular day. 
 
+<<<<<<< HEAD
 ########## Charging Depot Parameters
 num_buses = 30  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
 charger_power = (200, 80)  # Charger capacity in kW. First and second value denote first and second batch charging power respectively.
+=======
+########## Charging Station Parameters
+
+num_buses = 20  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
+charger_power = (240, 40)  # Single charger capacity in kW. First and second value denote first and second batch charging power respectively.
+>>>>>>> 3a61866e667b12af580f36fd2aefb5ddc810adae
 num_chargers = 10  # Total number of chargers available at the station.
 time_range1 = (12, 14)  # First set of hours, in between which, E-buses arrive.
 time_range2 = (20, 22)  # Second set of hours, in between which, E-buses arrive.
