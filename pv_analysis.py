@@ -38,7 +38,7 @@ class demand_response_class:
             return f"{(hour - 24) % 24:02d}:{minute:02d}" if hour >= 24 else slot
         plot_time_slots = [convert_time_for_plot(slot) for slot in time_labels2]
         
-        plt.figure(figsize=(15, 7))
+        plt.figure(figsize=(15, 6))
         plt.plot(time_labels, pv_generation_15min[(self.day_of_year-1)*96 : self.day_of_year*96], label='PV Generation', linestyle='-', color='blue')
         plt.title(f'PV Generation for Day {self.day_of_year}')
         plt.xlabel('Time of Day')
@@ -47,7 +47,7 @@ class demand_response_class:
         plt.legend()
         plt.show()
         
-        plt.figure(figsize=(15, 7))
+        plt.figure(figsize=(15, 6))
         plt.plot(time_labels2, day_feeder_load, label='Feeder Load', linestyle='-', color='blue')
         plt.plot(time_labels2, combined_load_15min_day, label='Load After E-Bus Charging', linestyle='-', color='green')
         plt.plot(time_labels2, after_pv, label=f'Net Load After PV (of {self.pv_size} kW)', linestyle='--', color='red')

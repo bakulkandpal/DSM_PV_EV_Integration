@@ -30,20 +30,21 @@ feeder_load = feeder_data_df.iloc[29:, 12].values
 feeder_load_15min = np.repeat(feeder_load, 4)
 
 class feeder_data_class:    
-    def __init__(self, num_buses, soc_lower, soc_upper, battery_capacity, charger_power, num_chargers, day_of_year, time_range1, time_range2):
+    def __init__(self, num_buses, soc_first_batch, soc_second_batch, battery_capacity, charger_power, num_chargers, day_of_year, time_range1, time_range2, soc_required):
         self.num_buses = num_buses
-        self.soc_lower = soc_lower
-        self.soc_upper = soc_upper
+        self.soc_first_batch = soc_first_batch
+        self.soc_second_batch = soc_second_batch
         self.battery_capacity = battery_capacity
         self.charger_power = charger_power
         self.num_chargers = num_chargers
         self.day_of_year = day_of_year
         self.time_range1 = time_range1
         self.time_range2 = time_range2
+        self.soc_required = soc_required
         
     def plots_15_mins(self):
         
-        charging_data, hourly_data = generate_charging_data_15min(self.num_buses, self.soc_lower, self.soc_upper, self.battery_capacity, self.charger_power, self.time_range1, self.time_range2)
+        charging_data, hourly_data = generate_charging_data_15min(self.num_buses, self.soc_first_batch, self.soc_second_batch, self.battery_capacity, self.charger_power, self.time_range1, self.time_range2, self.soc_required)
         
         arrivals = []
         departures = []
@@ -54,10 +55,11 @@ class feeder_data_class:
         #time_slots = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in [0, 15, 30, 45]] + [f"{hour:02d}:{minute:02d}" for hour in range(8) for minute in [0, 15, 30, 45]]
         
         time_slots1 = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in [0, 15, 30, 45]]
-        time_slots2 = [f"{24 + hour:02d}:{minute:02d}" for hour in range(8) for minute in [0, 15, 30, 45]]  #Next day's time-slots till 8 AM (E-buses depart).
+        time_slots2 = [f"{24 + hour:02d}:{minute:02d}" for hour in range(8) for minute in [0, 15, 30, 45]]  # Next day's time-slots till 8 AM (E-buses depart).
         
         time_slots=time_slots1+time_slots2
         
+        initial_soc_individual = []
         for time_slot in time_slots:
             hour = int(time_slot.split(':')[0])
             if hour >= 24:
@@ -66,12 +68,19 @@ class feeder_data_class:
             departures_count = len(hourly_data[time_slot]["Outgoing"])
             energy_required = sum(bus["Energy Required (kWh)"] for bus in hourly_data[time_slot]["Incoming"])
             arrivals.append(arrivals_count)
-            departures.append(departures_count)
             energy_requirements.append(energy_required)
+            
             if time_slot in hourly_data and "Incoming" in hourly_data[time_slot]:
                 for bus in hourly_data[time_slot]["Incoming"]:
                     times.append(time_slot)
                     energy_requirements_individual.append(bus["Energy Required (kWh)"])
+    
+                    if hour <= self.time_range1[1]:
+                        initial_soc_percentage = self.soc_required[0] - ((bus["Energy Required (kWh)"] / self.battery_capacity) * 100)
+                    else:
+                        initial_soc_percentage = self.soc_required[1] - ((bus["Energy Required (kWh)"] / self.battery_capacity) * 100)
+                        
+                    initial_soc_individual.append(initial_soc_percentage)
                     
         time_indices = [time_slots.index(time) for time in times]       
         
@@ -168,17 +177,52 @@ class feeder_data_class:
         plot_time_slots = [convert_time_for_plot(slot) for slot in time_slots]
         
         
-        plt.figure(figsize=(15, 6)) 
-        plt.scatter(time_indices, energy_requirements_individual, color='blue', alpha=0.8, s=40, marker='x')
-        plt.title('Individual E-Bus Charging Requirements', fontsize=12)
-        plt.xlabel('Time of Day', fontsize=12)
-        plt.ylabel('Energy Required (kWh)', fontsize=12)
-        plt.xticks(range(0, len(plot_time_slots), 4), plot_time_slots[::4], rotation=45)
-        plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(6))  # To put one label every 't' time-slots. Less clutter in Figure.
-        plt.tight_layout()  
-        plt.show()
+        # plt.figure(figsize=(15, 5))
+        # ax1 = plt.gca()
+        # soc_plot = ax1.scatter(time_indices, initial_soc_individual, color='green', alpha=0.8, s=40, marker='o', label='Arrival Time SOC (%)')
+        # ax1.set_title(f'Individual E-Bus Charging Requirements ({self.battery_capacity} kWh Battery Capacity)')
+        # ax1.set_xlabel('Time of Day')
+        # ax1.set_ylabel('Arrival Time SOC (%)')
+        # ax1.tick_params(axis='y', labelcolor='green')
+        # ax2 = ax1.twinx()
+        # energy_plot = ax2.scatter(time_indices, energy_requirements_individual, color='blue', alpha=0.8, s=40, marker='x', label='Energy Required (kWh)')
+        # ax2.set_ylabel('Energy Required (kWh)')
+        # ax2.tick_params(axis='y', labelcolor='blue')
+        # lines, labels = ax1.get_legend_handles_labels()
+        # lines2, labels2 = ax2.get_legend_handles_labels()
+        # ax2.legend(lines + lines2, labels + labels2, loc='upper right')
+        # plt.xticks(range(0, len(plot_time_slots), 4), plot_time_slots[::4], rotation=45)
+        # ax1.xaxis.set_major_locator(ticker.MultipleLocator(6))
+        # plt.tight_layout()
+        # plt.show()        
         
-        plt.figure(figsize=(15, 6))
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 8))  
+        soc_plot = ax1.scatter(time_indices, initial_soc_individual, color='green', alpha=0.8, s=30, marker='o', label='Arrival Time SOC (%)')
+        ax1.set_title(f'Individual E-Bus Charging Requirements ({self.battery_capacity} kWh Battery Capacity)', pad=20)  # pad increases space between title and plot
+        ax1.set_xlabel('Time of Day')
+        ax1.set_ylabel('Arrival Time SOC (%)')
+        ax1.tick_params(axis='y')
+        ax1.xaxis.set_major_locator(ticker.MultipleLocator(6))
+        energy_plot = ax2.scatter(time_indices, energy_requirements_individual, color='blue', alpha=0.8, s=30, marker='x', label='Energy Required (kWh)')
+        ax2.set_xlabel('Time of Day')
+        ax2.set_ylabel('Energy Required (kWh)')
+        ax2.tick_params(axis='y')
+        ax2.xaxis.set_major_locator(ticker.MultipleLocator(6))
+        ax2.margins(x=0.01)
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines, labels, loc='upper right')
+        ax2.legend(lines2, labels2, loc='upper right')
+        plt.subplots_adjust(hspace=0.5) 
+        plt.setp(ax1, xticks=range(0, len(plot_time_slots), 8), xticklabels=plot_time_slots[::8])
+        plt.setp(ax2, xticks=range(0, len(plot_time_slots), 8), xticklabels=plot_time_slots[::8])
+        for label in ax2.get_xticklabels():
+            label.set_rotation(45)  
+        plt.tight_layout()
+        plt.show()
+    
+        
+        plt.figure(figsize=(15, 5))
         plt.plot(time_slots1, arrivals, label='Arrivals', marker='o', linestyle='-', color='blue')
         plt.title('E-Bus Arrivals', fontsize=12)
         plt.xlabel('Time of Day', fontsize=12)
@@ -187,7 +231,7 @@ class feeder_data_class:
         plt.legend()
         plt.show() 
         
-        plt.figure(figsize=(15, 6))
+        plt.figure(figsize=(15, 5))
         plt.plot(time_slots, energy_requirement_per_slot, label='Energy Consumption', marker='o', linestyle='-', color='orange')
         plt.title('Total Energy Consumption at Any Time-Slot', fontsize=12)
         plt.xlabel('Time of Day', fontsize=12)
@@ -215,7 +259,7 @@ class feeder_data_class:
         plt.show()
         
         
-        plt.figure(figsize=(15, 8))
+        plt.figure(figsize=(15, 6))
         plt.plot(time_slots, combined_load_15min_day, label='Combined Feeder and E-Bus Charging Load', marker='', linestyle='-', color='green')
         plt.plot(time_slots, day_feeder_load, label='Original Feeder Load', marker='', linestyle='-', color='blue')  # Adjusted linestyle to '-'
         plt.title(f'Combined Feeder and E-Bus Charging Load for Day {self.day_of_year}', fontsize=12)
@@ -226,7 +270,7 @@ class feeder_data_class:
         plt.tight_layout()
         plt.show()
         
-        plt.figure(figsize=(15, 7)) 
+        plt.figure(figsize=(15, 6)) 
         plt.plot(days_of_year, day_peak_original, label='Original Feeder Peak Load', linestyle='-', color='blue')
         plt.plot(days_of_year, day_peak_ebus, label='Peak Load with E-Bus Charging', linestyle='-', color='red')
         plt.title('Daily Maximum Load')

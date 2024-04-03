@@ -34,7 +34,7 @@ def grid_problems_15min(charging_requirements, feeder_load_15min, xmer_capacity)
         
     y_offset = 0.05 # To avoid datapoint overlap in figure
     
-    plt.figure(figsize=(15, 6))
+    plt.figure(figsize=(15, 5))
     plt.scatter(days_of_year, capacity_exceeded - y_offset, c='blue', label='Without E-Bus Charging', alpha=0.95, s=20)
     plt.scatter(days_of_year, capacity_exceeded_ebus + y_offset, c='red', label='With E-Bus Charging', alpha=0.95, s=20)
     plt.title(f'Days Exceeding Transformer Capacity [{xmer_capacity} kVA]')
