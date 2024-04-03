@@ -17,6 +17,7 @@ def generate_charging_data_15min(num_buses, soc_first_batch, soc_second_batch, b
             bus_id = f"Bus_{random.randint(1, 2000):04d}"
             start_interval = random.choice(intervals)
 
+            # random.seed(42) 
             initial_soc = random.randint(soc_rand[0], soc_rand[1])
             final_soc = soc_req
             energy_needed = ((final_soc - initial_soc) / 100) * battery_capacity

@@ -9,8 +9,8 @@ from peak_load_shifting import peak_shifting
 day_of_year = 150  # For the visual plot of combined load of a particular day. 
 
 ########## Charging Depot Parameters
-num_buses = 20  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
-charger_power = (240, 40)  # Charger capacity in kW. First and second value denote first and second batch charging power respectively.
+num_buses = 30  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
+charger_power = (200, 80)  # Charger capacity in kW. First and second value denote first and second batch charging power respectively.
 num_chargers = 30  # Total number of chargers available at the station.
 time_range1 = (12, 14)  # First set of hours, in between which, E-buses arrive.
 time_range2 = (20, 22)  # Second set of hours, in between which, E-buses arrive.
@@ -24,9 +24,10 @@ network_plots=False  # Input 'True' if grid voltages are to be shown, else 'Fals
 
 ####### Battery State of Charge Parameters
 
-trip_soc_expenditure = 50  # Approximate battery SOC used in one trip of E-bus.
+soc_first_batch = (60, 70)  # Initial SOC for first batch of E-buses.
+soc_second_batch = (30, 40)  # Initial SOC for second batch of E-buses.
 battery_capacity = 240  # Battery capacity of single E-Bus in kWh.
-soc_required = (75, 100)  # Target SOC levels (in %) for the two batches of E-buses.
+soc_required = (70, 100)  # Target SOC levels (in %) for the two batches of E-buses.
 
 
 ###### PV Generator Parameters
@@ -34,10 +35,7 @@ pv_size = 2000  # Size of PV in kW. Assuming a PV is installed in the same feede
 
 
 
-
 ####### Calling External Functions
-soc_first_batch = (100-trip_soc_expenditure-5, 100-trip_soc_expenditure+5)  # Initial SOC for first batch of E-buses.
-soc_second_batch = (soc_required[0]-trip_soc_expenditure-5, soc_required[0]-trip_soc_expenditure+5)  # Initial SOC for second batch of E-buses.
 charging_requirements, feeder_load_15min = feeder_data_class(num_buses, soc_first_batch, soc_second_batch, battery_capacity, charger_power, num_chargers, day_of_year, time_range1, time_range2, soc_required).plots_15_mins() 
 indices_feeder, indices_ebus, day_indices, day_indices_ebus = grid_problems_15min(charging_requirements, feeder_load_15min, transformer_capacity)
 voltage, current = perform_load_flow(station_location_grid, plot=network_plots)  
