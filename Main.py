@@ -9,9 +9,9 @@ from peak_load_shifting import peak_shifting
 day_of_year = 150  # For the visual plot of combined load of a particular day. 
 
 ########## Charging Depot Parameters
-num_buses = 20  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
-charger_power = (240, 240)  # Charger capacity in kW. First and second value denote first and second batch charging power respectively.
-num_chargers = 30  # Total number of chargers available at the station.
+num_buses = 70  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
+charger_power = (240, 60)  # Charger capacity in kW. First and second value denote first and second batch charging power respectively.
+num_chargers = 15  # Total number of chargers available at the station.
 time_range1 = (12, 14)  # First set of hours, in between which, E-buses arrive.
 time_range2 = (20, 22)  # Second set of hours, in between which, E-buses arrive.
 
@@ -25,7 +25,7 @@ network_plots=False  # Input 'True' if grid voltages are to be shown in Plots, e
 ####### Battery State of Charge Parameters
 trip_soc_expenditure = 50  # Approximate battery SOC used in single trip of E-bus.
 battery_capacity = 240  # Battery capacity of single E-Bus in kWh.
-soc_required = (100, 100)  # Target SOC levels (in %) for the two batches of E-buses.
+soc_required = (80, 100)  # Target SOC levels (in %) for the two batches of E-buses.
 
 
 ###### PV Generator Parameters
