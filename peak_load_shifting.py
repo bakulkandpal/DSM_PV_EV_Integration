@@ -1,7 +1,7 @@
 from pyomo.environ import *
 import numpy as np
 
-def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range): 
+def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min): 
     charging_efficiency = 0.95  
     time_slots = np.array([time for time in hourly_data])  
     num_time_slots = len(time_slots)  
@@ -17,31 +17,41 @@ def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range):
                     bus_availability[bus_id] = []
                 bus_availability[bus_id].append(time_slot)     
     
+    def time_str_to_slot_index(time_str):
+        hours, minutes = map(int, time_str.split(':'))
+        time_slot_index = hours * 4 + minutes // 15
+        return time_slot_index
+
+    def calculate_end_time_slot(start_time_str):
+        start_slot = time_str_to_slot_index(start_time_str)
+        end_slot = start_slot + 8  # Adding 8 time slots to cover a 2-hour window
+        return end_slot
+    
     model = ConcreteModel()
     
-    model.time_slots = Set(initialize=time_slots)
-    model.buses = Set(initialize=range(num_buses))
+    # Assuming buses_time_range is populated appropriately
+    model.buses = RangeSet(0, len(buses_time_range) - 1)
     
-    model.charging = Var(model.buses, model.time_slots, within=NonNegativeReals)
+    # Charging rate variable for each bus for each time slot within their 2-hour window
+    model.charging_rate = Var(model.buses, within=NonNegativeReals, bounds=(0, 240))
     
-    def energy_requirement_rule(model, bus_id):
-        required_energy = sum(entry['Energy Required (kWh)'] for time_slot in bus_availability[bus_id] 
-                              for entry in hourly_data[time_slot]['Incoming'] if entry['BusID'] == bus_id)
-        charged_energy = sum(model.charging[bus_id, time_slot] * charging_efficiency for time_slot in bus_availability[bus_id])
-        return charged_energy >= required_energy 
-    model.EnergyRequirement = Constraint(model.buses, rule=energy_requirement_rule)
+    # Define a constraint for energy requirements
+    def energy_requirement_rule(m, b):
+        start_time_str = buses_time_range[b]['Charging Start']
+        start_slot = time_str_to_slot_index(start_time_str)
+        end_slot = calculate_end_time_slot(start_time_str)
+        end_slot = min(end_slot, max(model.time_slots))  # Ensure it does not exceed available time slots
+        return sum(m.charging_rate[b, t] * (1/4) for t in model.time_slots if start_slot <= t <= end_slot) >= buses_time_range[b]['Energy Required (kWh)']
+    model.energy_requirement = Constraint(model.buses, rule=energy_requirement_rule)
+
     
+    model.pv = Param(model.time_slots, initialize={t: 50 for t in range(96)})  # Example data
     
-    def squared_load_rule(model):
-        return sum((sum(model.charging[b, ts] for b in model.buses if ts in bus_availability[b]) + feeder_load_15min[ts])**2 for ts in model.time_slots)
-    model.Objective = Objective(rule=squared_load_rule, sense=minimize)
+    def objective_rule(m):
+        return sum((m.pv[t] - sum(m.charging_rate[b, t] for b in m.buses if t in range(time_str_to_slot_index(buses_time_range[b]['Charging Start']), calculate_end_time_slot(buses_time_range[b]['Charging Start']) + 1)))**2 for t in m.time_slots)
     
+    model.objective = Objective(rule=objective_rule, sense=minimize)
     
-    solver = SolverFactory('bonmin')
-    results = solver.solve(model, tee=True)
-    
-    if (results.solver.status == SolverStatus.ok) and (results.solver.termination_condition == TerminationCondition.optimal):
-        charging_schedule = pd.DataFrame(index=model.time_slots, columns=[f'Bus_{b}' for b in model.buses])
-        for b in model.buses:
-            for ts in model.time_slots:
-                charging_schedule.at[ts, f'Bus_{b}'] = model.charging[b, ts].value
+    # Setup and solve the model
+    solver = SolverFactory('glpk')
+    result = solver.solve(model)
