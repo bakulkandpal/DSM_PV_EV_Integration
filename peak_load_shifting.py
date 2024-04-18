@@ -1,57 +1,73 @@
 from pyomo.environ import *
 import numpy as np
 
-def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min): 
-    charging_efficiency = 0.95  
-    time_slots = np.array([time for time in hourly_data])  
-    num_time_slots = len(time_slots)  
-    #num_buses = len(set(entry['BusID'] for time_slot in hourly_data.values() for entry in time_slot['Incoming']))
-    
-    bus_availability = {}
-    
-    for time_slot, data in hourly_data.items():
-        for entry in data['Incoming']:
-            bus_id = entry.get('BusID')
-            if bus_id:
-                if bus_id not in bus_availability:
-                    bus_availability[bus_id] = []
-                bus_availability[bus_id].append(time_slot)     
-    
+def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min):
     def time_str_to_slot_index(time_str):
         hours, minutes = map(int, time_str.split(':'))
-        time_slot_index = hours * 4 + minutes // 15
-        return time_slot_index
+        return (hours - 12) * 4 + minutes // 15  # Convert from 12:00 as the base time
 
-    def calculate_end_time_slot(start_time_str):
-        start_slot = time_str_to_slot_index(start_time_str)
-        end_slot = start_slot + 8  # Adding 8 time slots to cover a 2-hour window
-        return end_slot
-    
     model = ConcreteModel()
-    
-    # Assuming buses_time_range is populated appropriately
+
+    # Time slots from 12:00 to 15:30
+    model.time_slots = RangeSet(0, 13)  # Slots indexed from 0 to 13
+
+    # Create the set of buses
     model.buses = RangeSet(0, len(buses_time_range) - 1)
-    
-    # Charging rate variable for each bus for each time slot within their 2-hour window
-    model.charging_rate = Var(model.buses, within=NonNegativeReals, bounds=(0, 240))
-    
-    # Define a constraint for energy requirements
+
+    # Parameters and variables
+    pv_generation = {i: 50 for i in range(14)}  # Example data
+    model.pv = Param(model.time_slots, initialize=pv_generation)
+    model.charging_rate = Var(model.buses, model.time_slots, within=NonNegativeReals, bounds=(0, 240))
+    model.energy_required = Param(model.buses, initialize={b: buses_time_range[b]['Energy Required (kWh)'] for b in range(len(buses_time_range))})
+
+    # Constraint for energy requirements
     def energy_requirement_rule(m, b):
         start_time_str = buses_time_range[b]['Charging Start']
         start_slot = time_str_to_slot_index(start_time_str)
-        end_slot = calculate_end_time_slot(start_time_str)
-        end_slot = min(end_slot, max(model.time_slots))  # Ensure it does not exceed available time slots
-        return sum(m.charging_rate[b, t] * (1/4) for t in model.time_slots if start_slot <= t <= end_slot) >= buses_time_range[b]['Energy Required (kWh)']
+        last_slot = time_str_to_slot_index('15:30')  # Cut-off time for all buses
+        return sum(m.charging_rate[b, t] * 0.25 for t in range(start_slot, last_slot + 1)) >= m.energy_required[b]
     model.energy_requirement = Constraint(model.buses, rule=energy_requirement_rule)
 
-    
-    model.pv = Param(model.time_slots, initialize={t: 50 for t in range(96)})  # Example data
-    
+    # Constraint to set charging rate to zero before bus starts charging
+    def no_charging_before_start_rule(m, b, t):
+        start_slot = time_str_to_slot_index(buses_time_range[b]['Charging Start'])
+        if t < start_slot:
+            return m.charging_rate[b, t] == 0
+        else:
+            return Constraint.Skip  # Skip the constraint for slots where charging is allowed
+    model.no_charging_before_start = Constraint(model.buses, model.time_slots, rule=no_charging_before_start_rule)
+
+    # Objective function to minimize PV mismatch
     def objective_rule(m):
-        return sum((m.pv[t] - sum(m.charging_rate[b, t] for b in m.buses if t in range(time_str_to_slot_index(buses_time_range[b]['Charging Start']), calculate_end_time_slot(buses_time_range[b]['Charging Start']) + 1)))**2 for t in m.time_slots)
-    
+        return sum((m.pv[t] - sum(m.charging_rate[b, t] for b in m.buses if t in range(time_str_to_slot_index(buses_time_range[b]['Charging Start']), time_str_to_slot_index('15:30') + 1)))**2 for t in model.time_slots)
+
     model.objective = Objective(rule=objective_rule, sense=minimize)
+
+    # Solver setup and execution
+    solver = SolverFactory('gurobi')
+    result = solver.solve(model, tee=True)
     
-    # Setup and solve the model
-    solver = SolverFactory('glpk')
-    result = solver.solve(model)
+    
+    # Display results
+    print("Solver Status:", result.solver.status)
+    print("Solver Termination Condition:", result.solver.termination_condition)
+    
+    # Checking if the solution is valid
+    if result.solver.status == 'ok' and result.solver.termination_condition == 'optimal':
+        # Print the charging rate for each bus and time slot
+        charging_rates = {}
+        for b in model.buses:
+            for t in model.time_slots:
+                if (b, t) in model.charging_rate:
+                    charging_rate_value = model.charging_rate[b, t].value
+                    if charging_rate_value is not None and charging_rate_value > 0:  # Optionally filter zero values
+                        charging_rates[(b, t)] = charging_rate_value
+                        print(f"Bus {b} at time slot {t}: Charging rate = {charging_rate_value} kW")
+        # Optionally, save to a file
+        with open('charging_rates.txt', 'w') as f:
+            for (b, t), rate in charging_rates.items():
+                f.write(f"Bus {b} at time slot {t}: Charging rate = {rate} kW\n")
+    else:
+        print("Solver did not find an optimal solution.")
+    return charging_rates   
+        
