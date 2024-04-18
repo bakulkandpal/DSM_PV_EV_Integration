@@ -4,6 +4,7 @@ from pyxlsb import open_workbook as open_xlsb
 from charging_pattern_15min import generate_charging_data_15min
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from matplotlib.ticker import AutoMinorLocator
 import math
 
 
@@ -89,6 +90,26 @@ class feeder_data_class:
         
         num_time_slots = len(time_slots)  # The total number of 15-minute time slots in one day
         
+        np.random.seed(42)
+        lower_bound = 3
+        upper_bound = 6
+        generator_costs = np.random.uniform(lower_bound, upper_bound, 5)
+        number_of_generators = 5  
+        
+        
+        total_range = upper_bound - lower_bound
+        steps = np.geomspace(total_range, total_range / 10, num=number_of_generators - 1)
+        generator_costs = np.cumsum(np.insert(steps, 0, lower_bound))      
+        generator_costs = lower_bound + (generator_costs - generator_costs[0]) * (upper_bound - lower_bound) / (generator_costs[-1] - generator_costs[0])
+       
+        generator_costs = generator_costs[1:]  # Removing the first element of generator costs to keep only total 4 generators
+
+        morning_peak = np.sin(np.pi * np.arange(num_time_slots) / (2 * 48))**2
+        afternoon_dip = np.sin(np.pi * (np.arange(num_time_slots) - 30) / (2 * 60))**2
+        evening_peak = np.sin(np.pi * (np.arange(num_time_slots) - 70) / (2 * 40))**2
+        load_curve = 0 + 200 * morning_peak + 100 * afternoon_dip + 200 * evening_peak + np.random.uniform(-30, 30, num_time_slots)
+        extended_generator_costs = np.repeat(generator_costs[:, np.newaxis], num_time_slots, axis=1)
+        
         charging_matrix = np.zeros((num_time_slots, self.num_buses*2))
         
         def time_slot_index(time_str):
@@ -142,6 +163,34 @@ class feeder_data_class:
         combined_load_15min_day = feeder_load_15min[(self.day_of_year-1)*96:(self.day_of_year)*96 + 32] + energy_requirement_per_slot
         day_feeder_load = feeder_load_15min[(self.day_of_year-1)*96 : self.day_of_year*96 + 32]
         
+        new_combined_load = load_curve + energy_requirement_per_slot / 1000   # Dividing by 1000 to bring charging requirements to MWh.
+        
+        # peak_new_combined_load = np.max(new_combined_load)
+        peak_new_combined_load = 420  # Trial
+        
+        cost_ratios = 1 / generator_costs
+        cost_ratios /= cost_ratios.sum()  
+        cost_ratios2 = generator_costs / generator_costs[-1]
+        contracted_powers = peak_new_combined_load * cost_ratios  # This power procurement is based on cost_ratio of generator costs.
+        contracted_powers_cumulative = np.cumsum(contracted_powers)
+        contracted_power2=peak_new_combined_load * cost_ratios2
+        
+        contracted_power_plots = np.array([260, 355, 395, 418])
+        
+        total_cost_discom = 0
+        for load in new_combined_load:
+            if load <= 260:
+                cost_index = 0
+            elif load > 260 and load <= 355:
+                cost_index = 1
+            elif load > 355 and load <= 395:
+                cost_index = 2
+            elif load > 395 and load <= 422:
+                cost_index = 3
+            else:
+                pass          
+            total_cost_discom += load * generator_costs[cost_index]
+        
         days_with_new_peaks_15min = []
         day_peak_original=[]
         day_peak_ebus=[]
@@ -175,26 +224,9 @@ class feeder_data_class:
             hour, minute = map(int, slot.split(":"))
             return f"{(hour - 24) % 24:02d}:{minute:02d}" if hour >= 24 else slot
         plot_time_slots = [convert_time_for_plot(slot) for slot in time_slots]
+        colors = ['blue', 'red', 'orange', 'purple', 'green']
         
-        
-        # plt.figure(figsize=(15, 5))
-        # ax1 = plt.gca()
-        # soc_plot = ax1.scatter(time_indices, initial_soc_individual, color='green', alpha=0.8, s=40, marker='o', label='Arrival Time SOC (%)')
-        # ax1.set_title(f'Individual E-Bus Charging Requirements ({self.battery_capacity} kWh Battery Capacity)')
-        # ax1.set_xlabel('Time of Day')
-        # ax1.set_ylabel('Arrival Time SOC (%)')
-        # ax1.tick_params(axis='y', labelcolor='green')
-        # ax2 = ax1.twinx()
-        # energy_plot = ax2.scatter(time_indices, energy_requirements_individual, color='blue', alpha=0.8, s=40, marker='x', label='Energy Required (kWh)')
-        # ax2.set_ylabel('Energy Required (kWh)')
-        # ax2.tick_params(axis='y', labelcolor='blue')
-        # lines, labels = ax1.get_legend_handles_labels()
-        # lines2, labels2 = ax2.get_legend_handles_labels()
-        # ax2.legend(lines + lines2, labels + labels2, loc='upper right')
-        # plt.xticks(range(0, len(plot_time_slots), 4), plot_time_slots[::4], rotation=45)
-        # ax1.xaxis.set_major_locator(ticker.MultipleLocator(6))
-        # plt.tight_layout()
-        # plt.show()        
+
         
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 8))  
         soc_plot = ax1.scatter(time_indices, initial_soc_individual, color='green', alpha=0.8, s=30, marker='o', label='Arrival Time SOC (%)')
@@ -260,37 +292,123 @@ class feeder_data_class:
         plt.legend(frameon=False, fontsize=12)
         plt.tight_layout(pad=3.0)
         plt.show()
+        
+      
+        fig, ax1 = plt.subplots(figsize=(15, 6))
+        ax1.set_xlabel('Time Slot')
+        ax1.set_ylabel('Load [MW]', color='black')
+        ax1.plot(np.arange(num_time_slots), load_curve, label='DISCOM Load Curve', color='black', linestyle='--')
+        ax1.tick_params(axis='y', labelcolor='black')
+        ax2 = ax1.twinx() 
+        ax2.set_ylabel('Cost [INR/MWh]', color='black')
+        # colors = ['blue', 'green', 'orange', 'purple', 'red']
+        for idx, gen_cost in enumerate(generator_costs):
+            ax2.plot(np.arange(num_time_slots), [gen_cost] * num_time_slots, label=f'Generator {idx+1} Cost', color=colors[idx], linewidth=2)
+        ax2.tick_params(axis='y', labelcolor='black')
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines + lines2, labels + labels2, loc='upper left')
+        time_slots_labels = [f"{hour%24:02d}:{minute:02d}" for hour in range(32) for minute in [0, 15, 30, 45]]
+        plt.xticks(range(0, len(time_slots_labels), 8), time_slots_labels[::8], rotation=45, ha="right")
+        plt.title('Generator Costs and DISCOM Load Curve')
+        for label in ax2.get_xticklabels():
+            label.set_rotation(45)  
+        plt.tight_layout()
+        plt.show()
                 
         
-        plt.figure(figsize=(15, 6))
-        plt.plot(time_slots, combined_load_15min_day, label='Combined Load', linestyle='-', linewidth=2, color='green')
-        plt.plot(time_slots, day_feeder_load, label='Feeder Load', linestyle='--', linewidth=2, color='blue')
-        plt.title(f'Load Profile for Day {self.day_of_year}', fontsize=14, fontweight='bold')
+        # plt.figure(figsize=(15, 6))  # Plot for feeder level impact of E-bus loads.
+        # plt.plot(time_slots, combined_load_15min_day, label='Combined Load', linestyle='-', linewidth=2, color='green')
+        # plt.plot(time_slots, day_feeder_load, label='Feeder Load', linestyle='--', linewidth=2, color='blue')
+        # plt.title(f'Load Profile for Day {self.day_of_year}', fontsize=14, fontweight='bold')
+        # plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
+        # plt.ylabel('Load [kW]', fontsize=12, fontweight='bold')
+        # plt.xticks(range(0, len(plot_time_slots), 8), plot_time_slots[::8], rotation=45, fontsize=10)
+        # plt.legend(frameon=False, fontsize=12)
+        # plt.tight_layout()
+        # plt.show()
+        
+        
+        plt.figure(figsize=(15, 6))  # Plot for entire DISCOM level impact of E-bus loads.
+        plt.plot(time_slots, new_combined_load, label='Combined Load', linestyle='--', linewidth=1.5, color='green')
+        plt.plot(time_slots, load_curve, label='DISCOM Load', linestyle='-', linewidth=2, color='blue')
+        plt.title(f'DISCOM Load Profile & Charging Requirements', fontsize=14, fontweight='bold')
         plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
-        plt.ylabel('Load [kW]', fontsize=12, fontweight='bold')
+        plt.ylabel('Load [MW]', fontsize=12, fontweight='bold')
         plt.xticks(range(0, len(plot_time_slots), 8), plot_time_slots[::8], rotation=45, fontsize=10)
         plt.legend(frameon=False, fontsize=12)
         plt.tight_layout()
         plt.show()
         
-        plt.figure(figsize=(15, 6))
-        plt.plot(days_of_year, day_peak_original, label='Feeder Peak Load', linestyle='-', linewidth=2, color='blue')
-        plt.plot(days_of_year, day_peak_ebus, label='Combined Peak Load', linestyle='-', linewidth=2, color='red')
-        plt.title('Daily Peak Load Comparison', fontsize=14, fontweight='bold')
-        plt.xlabel('Day of the Year', fontsize=12, fontweight='bold')
-        plt.ylabel('Load [kW]', fontsize=12, fontweight='bold')
-        plt.legend(frameon=False, fontsize=12)
+        
+
+        fig, ax1 = plt.subplots(figsize=(15, 6))
+        ax1.set_xlabel('Time Slot')
+        ax1.set_ylabel('Load [MW]', color='black')
+        ax1.plot(range(num_time_slots), load_curve, label='DISCOM Demand Curve', linestyle='-', linewidth=2, color='blue')
+        ax1.plot(range(num_time_slots), new_combined_load, label='Including E-Bus Charging', linestyle='--', linewidth=1.5, color='green')
+        ax1.set_xticks(range(0, num_time_slots, 8))
+        ax1.set_xticklabels(time_slots_labels[::8], rotation=45, ha="right")
+        ax1.yaxis.grid(True, linestyle='-', linewidth=0.5, color='gray', alpha=0.7)
+        ax1.minorticks_on() 
+        ax1.yaxis.grid(True, which='minor', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('Cost [INR/kWh]', color='black')
+        ax2.set_ylim(bottom=2.8, top=max(generator_costs)+0.15)
+        for idx, cost in enumerate(generator_costs):
+            ax2.hlines(y=cost, xmin=0, xmax=num_time_slots - 1, linewidth=0.75, colors=colors[idx], label=f'Generator {idx+1} Cost')
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines + lines2, labels + labels2, loc='lower right', bbox_to_anchor=(1.05, 1), ncol=len(lines+lines2), borderaxespad=0., frameon=False)
+        # plt.title('DISCOM Load Profile & Charging Requirements')
         plt.tight_layout()
         plt.show()
-
-        plt.figure(figsize=(12, 6))
-        violation_counts_15min.plot(kind='bar', color='skyblue', alpha=0.7, edgecolor='black', linewidth=0.5)
-        plt.ylabel('Days with Peak Increase', fontsize=12, fontweight='bold')
-        plt.title('Monthly Peak Load Increase', fontsize=14, fontweight='bold')
-        plt.xticks(rotation=45, fontsize=10)
-        plt.ylim(0, max(violation_counts_15min) * 1.2)
-        plt.tight_layout()
-        plt.show()    
         
-        return energy_requirement_per_slot,feeder_load_15min
+        
+        fig, ax1 = plt.subplots(figsize=(15, 6))
+        ax1.set_xlabel('Time Slot')
+        ax1.set_ylabel('Load [MW]', color='black')
+        ax1.plot(range(num_time_slots), load_curve, label='DISCOM Demand Curve', linestyle='-', linewidth=2, color='blue')
+        ax1.plot(range(num_time_slots), new_combined_load, label='Including E-Bus Charging', linestyle='--', linewidth=1.5, color='green')
+        ax1.set_xticks(range(0, num_time_slots, 8))
+        ax1.set_xticklabels(time_slots_labels[::8], rotation=45, ha="right")
+        # ax1.yaxis.grid(True, linestyle='-', linewidth=0.5, color='gray', alpha=0.7)
+        # ax1.minorticks_on() 
+        # ax1.yaxis.grid(True, which='minor', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
+        colors = ['cyan', 'red', 'yellow', 'black']
+        for idx, power in enumerate(contracted_power_plots):
+            ax1.hlines(y=power, xmin=0, xmax=num_time_slots - 1, linewidth=1.5, colors=colors[idx], label=f'Generator {idx+1}')
+        # ax1.set_ylim(bottom=min(contracted_power_plots) - 10, top=max(load_curve) + 50)
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('Cost [INR/kWh]', color='black')
+        ax2.set_ylim(bottom=2.8, top=max(generator_costs)+0.15)
+        for idx, cost in enumerate(generator_costs):
+            ax2.hlines(y=cost, xmin=0, xmax=num_time_slots - 1, linewidth=0.75, colors=colors[idx])
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(loc='lower right', bbox_to_anchor=(1.05, 1), ncol=len(lines+lines2), borderaxespad=0., frameon=False)
+        plt.tight_layout()
+        plt.show()
+        
+        
+        # plt.figure(figsize=(15, 6))  # Plot of feeder load peak of each day with and without E-bus charging
+        # plt.plot(days_of_year, day_peak_original, label='Feeder Peak Load', linestyle='-', linewidth=2, color='blue')
+        # plt.plot(days_of_year, day_peak_ebus, label='Combined Peak Load', linestyle='-', linewidth=2, color='red')
+        # plt.title('Daily Peak Load Comparison', fontsize=14, fontweight='bold')
+        # plt.xlabel('Day of the Year', fontsize=12, fontweight='bold')
+        # plt.ylabel('Load [kW]', fontsize=12, fontweight='bold')
+        # plt.legend(frameon=False, fontsize=12)
+        # plt.tight_layout()
+        # plt.show()
+
+        # plt.figure(figsize=(12, 6))  # Plot for days of a month when peak increases.
+        # violation_counts_15min.plot(kind='bar', color='skyblue', alpha=0.7, edgecolor='black', linewidth=0.5)
+        # plt.ylabel('Days with Peak Increase', fontsize=12, fontweight='bold')
+        # plt.title('Monthly Peak Load Increase', fontsize=14, fontweight='bold')
+        # plt.xticks(rotation=45, fontsize=10)
+        # plt.ylim(0, max(violation_counts_15min) * 1.2)
+        # plt.tight_layout()
+        # plt.show()    
+        
+        return energy_requirement_per_slot,feeder_load_15min, generator_costs, total_cost_discom
         

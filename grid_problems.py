@@ -34,16 +34,16 @@ def grid_problems_15min(charging_requirements, feeder_load_15min, xmer_capacity)
         
     y_offset = 0.05 # To avoid datapoint overlap in figure
     
-    plt.figure(figsize=(15, 5))
-    plt.scatter(days_of_year, capacity_exceeded - y_offset, c='blue', label='Without E-Bus Charging', alpha=0.95, s=20)
-    plt.scatter(days_of_year, capacity_exceeded_ebus + y_offset, c='red', label='With E-Bus Charging', alpha=0.95, s=20)
-    plt.title(f'Days Exceeding Transformer Capacity [{xmer_capacity} kVA]', fontsize=14, fontweight='bold')
-    plt.xlabel('Day of the Year', fontsize=12, fontweight='bold')
-    plt.ylabel('Transformer Capacity Exceeded?', fontsize=12, fontweight='bold')
-    plt.yticks([0, 1], ['No', 'Yes'], fontsize=12)  
-    plt.ylim(-0.2, 1.2)  # To account for added offset
-    plt.legend(frameon=False, fontsize=12)
-    plt.show()
+    # plt.figure(figsize=(15, 5))
+    # plt.scatter(days_of_year, capacity_exceeded - y_offset, c='blue', label='Without E-Bus Charging', alpha=0.95, s=20)
+    # plt.scatter(days_of_year, capacity_exceeded_ebus + y_offset, c='red', label='With E-Bus Charging', alpha=0.95, s=20)
+    # plt.title(f'Days Exceeding Transformer Capacity [{xmer_capacity} kVA]', fontsize=14, fontweight='bold')
+    # plt.xlabel('Day of the Year', fontsize=12, fontweight='bold')
+    # plt.ylabel('Transformer Capacity Exceeded?', fontsize=12, fontweight='bold')
+    # plt.yticks([0, 1], ['No', 'Yes'], fontsize=12)  
+    # plt.ylim(-0.2, 1.2)  # To account for added offset
+    # plt.legend(frameon=False, fontsize=12)
+    # plt.show()
    
     
     return indices_beyond_threshold, indices_beyond_threshold_ebus, day_indices_beyond_threshold, day_indices_beyond_threshold_ebus
