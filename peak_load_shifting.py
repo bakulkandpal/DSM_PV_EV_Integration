@@ -1,8 +1,8 @@
 from pyomo.environ import *
 import numpy as np
 
-def peak_shifting(hourly_data, charger_power, num_buses): 
-    charging_efficiency = 0.9  
+def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range): 
+    charging_efficiency = 0.95  
     time_slots = np.array([time for time in hourly_data])  
     num_time_slots = len(time_slots)  
     #num_buses = len(set(entry['BusID'] for time_slot in hourly_data.values() for entry in time_slot['Incoming']))

@@ -52,9 +52,7 @@ class feeder_data_class:
         times = []
         energy_requirements_individual = []
         energy_requirements = []
-        #time_slots = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in [0, 15, 30, 45]]
-        #time_slots = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in [0, 15, 30, 45]] + [f"{hour:02d}:{minute:02d}" for hour in range(8) for minute in [0, 15, 30, 45]]
-        
+   
         time_slots1 = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in [0, 15, 30, 45]]
         time_slots2 = [f"{24 + hour:02d}:{minute:02d}" for hour in range(8) for minute in [0, 15, 30, 45]]  # Next day's time-slots till 8 AM (E-buses depart).
         
@@ -90,27 +88,24 @@ class feeder_data_class:
         
         num_time_slots = len(time_slots)  # The total number of 15-minute time slots in one day
         
-        np.random.seed(42)
-        lower_bound = 3
-        upper_bound = 6
-        generator_costs = np.random.uniform(lower_bound, upper_bound, 5)
-        number_of_generators = 5  
-        
-        
-        total_range = upper_bound - lower_bound
-        steps = np.geomspace(total_range, total_range / 10, num=number_of_generators - 1)
-        generator_costs = np.cumsum(np.insert(steps, 0, lower_bound))      
-        generator_costs = lower_bound + (generator_costs - generator_costs[0]) * (upper_bound - lower_bound) / (generator_costs[-1] - generator_costs[0])
-       
-        generator_costs = generator_costs[1:]  # Removing the first element of generator costs to keep only total 4 generators
-
-        morning_peak = np.sin(np.pi * np.arange(num_time_slots) / (2 * 48))**2
-        afternoon_dip = np.sin(np.pi * (np.arange(num_time_slots) - 30) / (2 * 60))**2
-        evening_peak = np.sin(np.pi * (np.arange(num_time_slots) - 70) / (2 * 40))**2
-        load_curve = 0 + 200 * morning_peak + 100 * afternoon_dip + 200 * evening_peak + np.random.uniform(-30, 30, num_time_slots)
-        extended_generator_costs = np.repeat(generator_costs[:, np.newaxis], num_time_slots, axis=1)
-        
         charging_matrix = np.zeros((num_time_slots, self.num_buses*2))
+        
+
+        time_range_start = f"{self.time_range1[0]:02d}:00"
+        time_range_end = f"{self.time_range1[1]:02d}:00"
+        
+        buses_time_range = []
+        
+        for entry in charging_data:
+            charging_start = entry['Charging Start']
+            if time_range_start <= charging_start < time_range_end:
+                bus_energy_info = {
+                    'Bus ID': entry['Bus ID'],
+                    'Energy Required (kWh)': entry['Total Energy Required (kWh)'],
+                    'Charging Start': entry['Charging Start']
+                }
+                buses_time_range.append(bus_energy_info)
+
         
         def time_slot_index(time_str):
             hour, minute = map(int, time_str.split(':'))
@@ -163,34 +158,7 @@ class feeder_data_class:
         combined_load_15min_day = feeder_load_15min[(self.day_of_year-1)*96:(self.day_of_year)*96 + 32] + energy_requirement_per_slot
         day_feeder_load = feeder_load_15min[(self.day_of_year-1)*96 : self.day_of_year*96 + 32]
         
-        new_combined_load = load_curve + energy_requirement_per_slot / 1000   # Dividing by 1000 to bring charging requirements to MWh.
-        
-        # peak_new_combined_load = np.max(new_combined_load)
-        peak_new_combined_load = 420  # Trial
-        
-        cost_ratios = 1 / generator_costs
-        cost_ratios /= cost_ratios.sum()  
-        cost_ratios2 = generator_costs / generator_costs[-1]
-        contracted_powers = peak_new_combined_load * cost_ratios  # This power procurement is based on cost_ratio of generator costs.
-        contracted_powers_cumulative = np.cumsum(contracted_powers)
-        contracted_power2=peak_new_combined_load * cost_ratios2
-        
-        contracted_power_plots = np.array([260, 355, 395, 418])
-        
-        total_cost_discom = 0
-        for load in new_combined_load:
-            if load <= 260:
-                cost_index = 0
-            elif load > 260 and load <= 355:
-                cost_index = 1
-            elif load > 355 and load <= 395:
-                cost_index = 2
-            elif load > 395 and load <= 422:
-                cost_index = 3
-            else:
-                pass          
-            total_cost_discom += load * generator_costs[cost_index]
-        
+  
         days_with_new_peaks_15min = []
         day_peak_original=[]
         day_peak_ebus=[]
@@ -292,29 +260,6 @@ class feeder_data_class:
         plt.legend(frameon=False, fontsize=12)
         plt.tight_layout(pad=3.0)
         plt.show()
-        
-      
-        fig, ax1 = plt.subplots(figsize=(15, 6))
-        ax1.set_xlabel('Time Slot')
-        ax1.set_ylabel('Load [MW]', color='black')
-        ax1.plot(np.arange(num_time_slots), load_curve, label='DISCOM Load Curve', color='black', linestyle='--')
-        ax1.tick_params(axis='y', labelcolor='black')
-        ax2 = ax1.twinx() 
-        ax2.set_ylabel('Cost [INR/MWh]', color='black')
-        # colors = ['blue', 'green', 'orange', 'purple', 'red']
-        for idx, gen_cost in enumerate(generator_costs):
-            ax2.plot(np.arange(num_time_slots), [gen_cost] * num_time_slots, label=f'Generator {idx+1} Cost', color=colors[idx], linewidth=2)
-        ax2.tick_params(axis='y', labelcolor='black')
-        lines, labels = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax2.legend(lines + lines2, labels + labels2, loc='upper left')
-        time_slots_labels = [f"{hour%24:02d}:{minute:02d}" for hour in range(32) for minute in [0, 15, 30, 45]]
-        plt.xticks(range(0, len(time_slots_labels), 8), time_slots_labels[::8], rotation=45, ha="right")
-        plt.title('Generator Costs and DISCOM Load Curve')
-        for label in ax2.get_xticklabels():
-            label.set_rotation(45)  
-        plt.tight_layout()
-        plt.show()
                 
         
         # plt.figure(figsize=(15, 6))  # Plot for feeder level impact of E-bus loads.
@@ -329,66 +274,30 @@ class feeder_data_class:
         # plt.show()
         
         
-        plt.figure(figsize=(15, 6))  # Plot for entire DISCOM level impact of E-bus loads.
-        plt.plot(time_slots, new_combined_load, label='Combined Load', linestyle='--', linewidth=1.5, color='green')
-        plt.plot(time_slots, load_curve, label='DISCOM Load', linestyle='-', linewidth=2, color='blue')
-        plt.title(f'DISCOM Load Profile & Charging Requirements', fontsize=14, fontweight='bold')
-        plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
-        plt.ylabel('Load [MW]', fontsize=12, fontweight='bold')
-        plt.xticks(range(0, len(plot_time_slots), 8), plot_time_slots[::8], rotation=45, fontsize=10)
-        plt.legend(frameon=False, fontsize=12)
-        plt.tight_layout()
-        plt.show()
-        
-        
-
-        fig, ax1 = plt.subplots(figsize=(15, 6))
-        ax1.set_xlabel('Time Slot')
-        ax1.set_ylabel('Load [MW]', color='black')
-        ax1.plot(range(num_time_slots), load_curve, label='DISCOM Demand Curve', linestyle='-', linewidth=2, color='blue')
-        ax1.plot(range(num_time_slots), new_combined_load, label='Including E-Bus Charging', linestyle='--', linewidth=1.5, color='green')
-        ax1.set_xticks(range(0, num_time_slots, 8))
-        ax1.set_xticklabels(time_slots_labels[::8], rotation=45, ha="right")
-        ax1.yaxis.grid(True, linestyle='-', linewidth=0.5, color='gray', alpha=0.7)
-        ax1.minorticks_on() 
-        ax1.yaxis.grid(True, which='minor', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
-        ax2 = ax1.twinx()
-        ax2.set_ylabel('Cost [INR/kWh]', color='black')
-        ax2.set_ylim(bottom=2.8, top=max(generator_costs)+0.15)
-        for idx, cost in enumerate(generator_costs):
-            ax2.hlines(y=cost, xmin=0, xmax=num_time_slots - 1, linewidth=0.75, colors=colors[idx], label=f'Generator {idx+1} Cost')
-        lines, labels = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines + lines2, labels + labels2, loc='lower right', bbox_to_anchor=(1.05, 1), ncol=len(lines+lines2), borderaxespad=0., frameon=False)
-        # plt.title('DISCOM Load Profile & Charging Requirements')
-        plt.tight_layout()
-        plt.show()
-        
-        
-        fig, ax1 = plt.subplots(figsize=(15, 6))
-        ax1.set_xlabel('Time Slot')
-        ax1.set_ylabel('Load [MW]', color='black')
-        ax1.plot(range(num_time_slots), load_curve, label='DISCOM Demand Curve', linestyle='-', linewidth=2, color='blue')
-        ax1.plot(range(num_time_slots), new_combined_load, label='Including E-Bus Charging', linestyle='--', linewidth=1.5, color='green')
-        ax1.set_xticks(range(0, num_time_slots, 8))
-        ax1.set_xticklabels(time_slots_labels[::8], rotation=45, ha="right")
-        # ax1.yaxis.grid(True, linestyle='-', linewidth=0.5, color='gray', alpha=0.7)
-        # ax1.minorticks_on() 
-        # ax1.yaxis.grid(True, which='minor', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
-        colors = ['cyan', 'red', 'yellow', 'black']
-        for idx, power in enumerate(contracted_power_plots):
-            ax1.hlines(y=power, xmin=0, xmax=num_time_slots - 1, linewidth=1.5, colors=colors[idx], label=f'Generator {idx+1}')
-        # ax1.set_ylim(bottom=min(contracted_power_plots) - 10, top=max(load_curve) + 50)
-        ax2 = ax1.twinx()
-        ax2.set_ylabel('Cost [INR/kWh]', color='black')
-        ax2.set_ylim(bottom=2.8, top=max(generator_costs)+0.15)
-        for idx, cost in enumerate(generator_costs):
-            ax2.hlines(y=cost, xmin=0, xmax=num_time_slots - 1, linewidth=0.75, colors=colors[idx])
-        lines, labels = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(loc='lower right', bbox_to_anchor=(1.05, 1), ncol=len(lines+lines2), borderaxespad=0., frameon=False)
-        plt.tight_layout()
-        plt.show()
+        # fig, ax1 = plt.subplots(figsize=(15, 6))
+        # ax1.set_xlabel('Time Slot')
+        # ax1.set_ylabel('Load [MW]', color='black')
+        # ax1.plot(range(num_time_slots), load_curve, label='DISCOM Demand Curve', linestyle='-', linewidth=2, color='blue')
+        # ax1.plot(range(num_time_slots), new_combined_load, label='Including E-Bus Charging', linestyle='--', linewidth=1.5, color='green')
+        # ax1.set_xticks(range(0, num_time_slots, 8))
+        # ax1.set_xticklabels(time_slots_labels[::8], rotation=45, ha="right")
+        # # ax1.yaxis.grid(True, linestyle='-', linewidth=0.5, color='gray', alpha=0.7)
+        # # ax1.minorticks_on() 
+        # # ax1.yaxis.grid(True, which='minor', linestyle=':', linewidth=0.5, color='gray', alpha=0.5)
+        # colors = ['cyan', 'red', 'yellow', 'black']
+        # for idx, power in enumerate(contracted_power_plots):
+        #     ax1.hlines(y=power, xmin=0, xmax=num_time_slots - 1, linewidth=1.5, colors=colors[idx], label=f'Generator {idx+1}')
+        # # ax1.set_ylim(bottom=min(contracted_power_plots) - 10, top=max(load_curve) + 50)
+        # ax2 = ax1.twinx()
+        # ax2.set_ylabel('Cost [INR/kWh]', color='black')
+        # ax2.set_ylim(bottom=2.8, top=max(generator_costs)+0.15)
+        # for idx, cost in enumerate(generator_costs):
+        #     ax2.hlines(y=cost, xmin=0, xmax=num_time_slots - 1, linewidth=0.75, colors=colors[idx])
+        # lines, labels = ax1.get_legend_handles_labels()
+        # lines2, labels2 = ax2.get_legend_handles_labels()
+        # ax1.legend(loc='lower right', bbox_to_anchor=(1.05, 1), ncol=len(lines+lines2), borderaxespad=0., frameon=False)
+        # plt.tight_layout()
+        # plt.show()
         
         
         # plt.figure(figsize=(15, 6))  # Plot of feeder load peak of each day with and without E-bus charging
@@ -410,5 +319,5 @@ class feeder_data_class:
         # plt.tight_layout()
         # plt.show()    
         
-        return energy_requirement_per_slot,feeder_load_15min, generator_costs, total_cost_discom
+        return energy_requirement_per_slot,feeder_load_15min, buses_time_range
         

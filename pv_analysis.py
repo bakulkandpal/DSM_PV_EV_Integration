@@ -28,7 +28,8 @@ class demand_response_class:
         daily_net_load = np.array(daily_net_load)    
         combined_load_15min_day = self.feeder_load_15min[(self.day_of_year-1)*96:(self.day_of_year-1)*96 + 128] + self.charging_requirements
         day_feeder_load = self.feeder_load_15min[(self.day_of_year-1)*96 : self.day_of_year*96 +32]
-        after_pv = combined_load_15min_day - pv_generation_15min[(self.day_of_year-1)*96 : self.day_of_year*96 + 32]
+        pv_generation_selected = pv_generation_15min[(self.day_of_year-1)*96 : self.day_of_year*96 + 32].reset_index(drop=True)
+        after_pv = self.charging_requirements - pv_generation_selected
         day_pv_hourly = pv_hourly[(self.day_of_year-1)*24 : self.day_of_year*24]
         
         time_labels = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in [0, 15, 30, 45]] 
@@ -50,8 +51,7 @@ class demand_response_class:
             plt.show()
             
             plt.figure(figsize=(15, 6))
-            plt.plot(time_labels2, day_feeder_load, label='Feeder Load', linestyle='-', color='blue')
-            plt.plot(time_labels2, combined_load_15min_day, label='Load After E-Bus Charging', linestyle='-', color='green')
+            plt.plot(time_labels2, self.charging_requirements, label='Charging Load', linestyle='-', color='blue')
             plt.plot(time_labels2, after_pv, label=f'Net Load After PV (of {self.pv_size} kW)', linestyle='--', color='red')
             plt.title(f'Load Profiles for Day {self.day_of_year}')
             plt.xlabel('Time of Day')
