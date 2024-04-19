@@ -1,7 +1,7 @@
 from pyomo.environ import *
 import numpy as np
 
-def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min):
+def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2):
     def time_str_to_slot_index(time_str):
         hours, minutes = map(int, time_str.split(':'))
         return (hours - 12) * 4 + minutes // 15  # Convert from 12:00 as the base time
@@ -15,17 +15,21 @@ def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_ge
     model.buses = RangeSet(0, len(buses_time_range) - 1)
 
     # Parameters and variables
-    pv_generation = {i: 50 for i in range(14)}  # Example data
+    start_pv = day_of_year * 96 + time_range1[0]  # Start from 12:00 PM of the given day
+    end_pv = start_index + 14  # Up to and including 3:30 PM
+    pv_generation = {i - start_index: pv_generation_15min[i] for i in range(start_index, end_index)}
+    
     model.pv = Param(model.time_slots, initialize=pv_generation)
     model.charging_rate = Var(model.buses, model.time_slots, within=NonNegativeReals, bounds=(0, 240))
     model.energy_required = Param(model.buses, initialize={b: buses_time_range[b]['Energy Required (kWh)'] for b in range(len(buses_time_range))})
 
-    # Constraint for energy requirements
+    # Constraint for energy requirements 
     def energy_requirement_rule(m, b):
         start_time_str = buses_time_range[b]['Charging Start']
         start_slot = time_str_to_slot_index(start_time_str)
         last_slot = time_str_to_slot_index('15:30')  # Cut-off time for all buses
-        return sum(m.charging_rate[b, t] * 0.25 for t in range(start_slot, last_slot + 1)) >= m.energy_required[b]
+        # return sum(m.charging_rate[b, t] * 0.25 for t in range(start_slot, last_slot + 1)) >= m.energy_required[b]
+        return sum(m.charging_rate[b, t] * 0.25 for t in range(0, last_slot - 1)) >= m.energy_required[b]
     model.energy_requirement = Constraint(model.buses, rule=energy_requirement_rule)
 
     # Constraint to set charging rate to zero before bus starts charging
@@ -44,7 +48,7 @@ def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_ge
     model.objective = Objective(rule=objective_rule, sense=minimize)
 
     # Solver setup and execution
-    solver = SolverFactory('gurobi')
+    solver = SolverFactory('ipopt')
     result = solver.solve(model, tee=True)
     
     
