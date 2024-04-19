@@ -16,7 +16,7 @@ def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_ge
 
     # Parameters and variables
     start_pv = day_of_year * 96 + time_range1[0]  # Start from 12:00 PM of the given day
-    end_pv = start_index + 14  # Up to and including 3:30 PM
+    end_pv = start_pv + 14  # Up to and including 3:30 PM
     pv_generation = {i - start_index: pv_generation_15min[i] for i in range(start_index, end_index)}
     
     model.pv = Param(model.time_slots, initialize=pv_generation)
