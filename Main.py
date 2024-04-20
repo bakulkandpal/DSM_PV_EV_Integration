@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 day_of_year = 170  # For the visual plot of combined load of a particular day. 
 
-########## Charging Depot Parameters
+########## Charging Depot Parameters 
 num_buses = 70  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
 charger_power = (240, 240)  # Charger capacity in kW. First and second value denote first and second batch charging power respectively.
 num_chargers = 40  # Total number of chargers available at the station.
@@ -45,4 +45,4 @@ voltage, current = perform_load_flow(station_location_grid, plot=network_plots)
 demand_response = demand_response_class(charging_requirements, feeder_load_15min, pv_size, day_of_year, plots_pv)
 pv_generation_15min, daily_net_load, day_pv_hourly = demand_response.optimized_asset()
 charging_data, hourly_data = generate_charging_data_15min(num_buses, soc_first_batch, soc_second_batch, battery_capacity, charger_power, time_range1, time_range2, soc_required)
-charging_rates = peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2)
+charging_rates, sum_energy_per_bus, sum_energy_per_time_slot = peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2)
