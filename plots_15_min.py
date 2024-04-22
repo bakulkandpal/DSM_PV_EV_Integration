@@ -89,7 +89,7 @@ class feeder_data_class:
         num_time_slots = len(time_slots)  # The total number of 15-minute time slots in one day
         
         charging_matrix = np.zeros((num_time_slots, self.num_buses*2))
-        
+        charging_matrix2 = np.zeros((num_time_slots, self.num_buses*2))
 
         time_range_start = f"{self.time_range1[0]:02d}:00"
         time_range_end = f"{self.time_range1[1]:02d}:00"
@@ -123,11 +123,27 @@ class feeder_data_class:
             charging_duration_15min = math.ceil(energy_required / (charger_power_for_bus / 4))   
             for i in range(charging_duration_15min):
                 if start_time_slot + i < num_time_slots:
-                    charging_matrix[start_time_slot + i, bus_index] = 1     
+                    charging_matrix[start_time_slot + i, bus_index] = 1 
+                    
+                    
+            ## NEW CALCULATION FOR CHARGING MATRIX (2) BELOW: DISCARD PREVIOUS CALC. ABOVE
+            charger_power_per_15min = self.charger_power[0] / 4 if bus_index < len(charging_data) / 2 else self.charger_power[1] / 4
+            full_slots_needed = int(energy_required / charger_power_per_15min)
+            partial_energy_needed = energy_required % charger_power_per_15min
+            total_slots_needed = full_slots_needed + (1 if partial_energy_needed > 0 else 0)
+
+            for i in range(total_slots_needed):
+                if start_time_slot + i < num_time_slots:
+                    if i < full_slots_needed:
+                        charging_matrix2[start_time_slot + i, bus_index] = 1  # Full power for full slots
+                    else:
+                        fractional_power = partial_energy_needed / charger_power_per_15min  # Fractional power needed for the last slot
+                        charging_matrix2[start_time_slot + i, bus_index] = fractional_power                           
             
         connected_buses_per_slot = np.sum(charging_matrix, axis=1)
         
         energy_requirement_per_slot = np.zeros(num_time_slots)
+        energy_requirement_per_slot2 = np.zeros(num_time_slots)
         overflow_buses = 0
         actual_buses_charged_per_slot = np.zeros(num_time_slots, dtype=int)
         
@@ -141,6 +157,7 @@ class feeder_data_class:
         
         for i, slot in enumerate(time_slots):
             connected_buses = np.sum(charging_matrix[i]) + overflow_buses
+            connected_buses2 = np.sum(charging_matrix2[i]) + overflow_buses
             
             if after_first_before_second(slot, self.time_range1, self.time_range2):
                 charger_power_for_slot = self.charger_power[0]
@@ -150,8 +167,10 @@ class feeder_data_class:
                 charger_power_for_slot = 0 
             
             buses_charged = min(connected_buses, self.num_chargers)
+            buses_charged2 = min(connected_buses2, self.num_chargers)
             actual_buses_charged_per_slot[i] = buses_charged
             energy_requirement_per_slot[i] = buses_charged * charger_power_for_slot if charger_power_for_slot else 0
+            energy_requirement_per_slot2[i] = buses_charged2 * charger_power_for_slot if charger_power_for_slot else 0
             overflow_buses = max(0, connected_buses - self.num_chargers)
         
         
@@ -200,7 +219,7 @@ class feeder_data_class:
         soc_plot = ax1.scatter(time_indices, initial_soc_individual, color='green', alpha=0.8, s=30, marker='o', label='Arrival Time SOC (%)')
         ax1.set_title(f'Individual E-Bus Charging Requirements ({self.battery_capacity} kWh Battery Capacity)', fontsize=14, fontweight='bold')
         ax1.set_xlabel('Time of Day', fontsize=12, fontweight='bold')
-        ax1.set_ylabel('Arrival Time SOC (%)', fontsize=12, fontweight='bold')
+        ax1.set_ylabel('Arrival Time SOC [%]', fontsize=12, fontweight='bold')
         ax1.tick_params(axis='y')
         ax1.xaxis.set_major_locator(ticker.MultipleLocator(6))
         energy_plot = ax2.scatter(time_indices, energy_requirements_individual, color='blue', alpha=0.8, s=30, marker='x', label='Energy Required (kWh)')
@@ -231,13 +250,14 @@ class feeder_data_class:
         plt.legend(frameon=False, fontsize=12)
         plt.tight_layout()  
         plt.show()
+    
         
         plt.figure(figsize=(15, 5))
-        plt.plot(time_slots, energy_requirement_per_slot, label='Energy Consumption', linestyle='-', linewidth=2, color='orange')
+        plt.plot(time_slots, energy_requirement_per_slot2, label='Energy Consumption', linestyle='-', linewidth=2, color='orange')
         plt.title('Total Energy Consumption', fontsize=14, fontweight='bold')
         plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
         plt.xticks(range(0, len(plot_time_slots), 8), plot_time_slots[::8], rotation=45, fontsize=12)
-        plt.ylabel('Energy [kWh]', fontsize=12, fontweight='bold')
+        plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
         plt.legend(frameon=False, fontsize=12)
         plt.show()
         
@@ -319,5 +339,5 @@ class feeder_data_class:
         # plt.tight_layout()
         # plt.show()    
         
-        return energy_requirement_per_slot,feeder_load_15min, buses_time_range
+        return energy_requirement_per_slot2, feeder_load_15min, buses_time_range
         
