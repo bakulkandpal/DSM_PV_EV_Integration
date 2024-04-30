@@ -8,8 +8,7 @@ from peak_load_shifting_BESS import peak_shifting_bess
 import matplotlib.pyplot as plt
 import numpy as np
 
-
-day_of_year = 90  # For the visual plot of combined load of a particular day. 
+day_of_year = 90  # For the visual plot. 
 
 ########## Charging Depot Parameters 
 num_buses = 70  # Total number of E-buses to be charged in each batch. (Total 2 different batches)
@@ -30,7 +29,7 @@ network_plots=False  # Input 'True' if grid voltages are to be shown in Plots, e
 ####### Battery State of Charge Parameters
 trip_soc_expenditure = 50  # Approximate battery SOC used in single trip of E-bus.
 battery_capacity = 240  # Battery capacity of single E-Bus in kWh.
-soc_required = (100, 100)  # Target SOC levels (in %) for the two batches of E-buses.
+soc_required = (75, 100)  # Target SOC levels (in %) for the two batches of E-buses.
 
 
 ###### PV & BESS Parameters

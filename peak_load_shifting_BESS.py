@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 
 def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2, last_time_slot, case_pv, plot_time_slots):
     
-    bess_power_kW = bess_capacity_kWh*0.5  # Maximum charge/discharge power rating in kW. Assumed charging/discharging efficiency 100% as of now.
-    bess_initial_soc = 0.5 * bess_capacity_kWh  # Initial SOC assumed 50% of capacity. Can be dynamic also.
+    bess_power_kW = bess_capacity_kWh*0.33  # Maximum charge/discharge power rating in kW. Assumed charging/discharging efficiency 100% as of now.
+    bess_initial_soc = 0.33 * bess_capacity_kWh  # Initial SOC assumed 50% of capacity. Can be dynamic also.
     
     def time_str_to_slot_index(time_str):
         hours, minutes = map(int, time_str.split(':'))
@@ -148,47 +148,20 @@ def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, ch
             current_minute = 0
             current_hour += 1      
        
+    x_charging = range(len(charging_requirements))  
+    
+    bess_schedule_all_slots = np.zeros(len(charging_requirements))
+    bess_schedule_all_slots[:len(bess_values)] = bess_values
     
     plt.figure(figsize=(15, 6))
-    plt.plot(time_labels, pv_values, label='PV Generation', linewidth=2, color='green')
-    plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
-    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
-    plt.title('PV Generation', fontsize=14, fontweight='bold')
-    plt.xticks(time_labels) 
+    plt.plot(x_charging, pv_generation_15min[(day_of_year-1)*96 : day_of_year*96+32], label='PV Generation', linestyle='-', color='blue')
+    plt.plot(x_charging, bess_schedule_all_slots, label='Batter Charging/Discharging', linewidth=2, color='green')
+    plt.plot(x_charging, charging_requirements, label='Original', linestyle='--', linewidth=2, color='red')
+    plt.title(f'Day {day_of_year}')
+    plt.xlabel('Time of Day')
+    plt.ylabel('PV Generation (kW)')
+    plt.xticks(range(0, len(plot_time_slots), 4), plot_time_slots[::4], rotation=45, fontsize=10)
     plt.legend()
-    plt.tight_layout()  
-    plt.show()
-    
-    plt.figure(figsize=(15, 6))
-    plt.plot(time_labels, ebus_values, label='Energy Consumption', linewidth=2, color='orange')
-    plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
-    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
-    plt.ylim(0, 6200)
-    plt.title('Total Energy Consumption', fontsize=14, fontweight='bold')
-    plt.xticks(time_labels) 
-    plt.legend()
-    plt.tight_layout()  
-    plt.show()
-    
-    plt.figure(figsize=(15, 6))
-    plt.plot(time_labels, bess_values, label='BESS Charging/Discharging', linewidth=2, color='blue')
-    plt.axhline(y=0, color='red', linestyle='--') 
-    plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
-    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
-    plt.title('Schedule BESS', fontsize=14, fontweight='bold')
-    plt.xticks(time_labels) 
-    plt.legend()
-    plt.tight_layout()  
-    plt.show()
-    
-    plt.figure(figsize=(12, 6))
-    plt.plot(time_labels, net_power, label='Net Power', marker='o', linestyle='-')
-    plt.title('Net Power (Ebus + BESS - PV)', fontsize=14, fontweight='bold')
-    plt.xlabel('Time Slots', fontsize=12, fontweight='bold')
-    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
-    plt.xticks(time_labels,)
-    plt.legend()
-    plt.tight_layout()
     plt.show()
                     
     return charging_rates, sum_energy_per_bus, sum_energy_per_time_slot                

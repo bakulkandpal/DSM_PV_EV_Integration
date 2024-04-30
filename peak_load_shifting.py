@@ -117,9 +117,6 @@ def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_ge
         new_charging_requirements[start_index:start_index + len(ebus_values)] = ebus_values
         
     x_charging = range(len(new_charging_requirements))    
-        
-    
-    
     
     plt.figure(figsize=(15, 6))
     plt.plot(x_charging, pv_generation_15min[(day_of_year-1)*96 : day_of_year*96+32], label='PV Generation', linestyle='-', color='blue')
