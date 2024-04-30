@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 
 
-def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2, last_time_slot, case_pv):
+def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2, last_time_slot, case_pv, charging_requirements, plot_time_slots):
     
     def time_str_to_slot_index(time_str):
         hours, minutes = map(int, time_str.split(':'))
@@ -20,10 +20,10 @@ def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_ge
 
     start_pv = day_of_year * 96 + time_range1[0]*4  
     end_pv = start_pv + num_time_slots  # Up to and including last time slot
-    # pv_generation = {i - start_pv: pv_generation_15min[i] for i in range(start_pv, end_pv)}  # Use this for actual PV data.
+    pv_generation = {i - start_pv: pv_generation_15min[i] for i in range(start_pv, end_pv)}  # Use this for actual PV data.
     
-    pv_values = case_pv  # Use this for case studies.
-    pv_generation = {i: pv for i, pv in enumerate(pv_values)}  # Use this for case studies.
+    # pv_values = case_pv  # Use this for case studies.
+    # pv_generation = {i: pv for i, pv in enumerate(pv_values)}  # Use this for case studies.
     
     model.pv = Param(model.time_slots, initialize=pv_generation)
     model.charging_rate = Var(model.buses, model.time_slots, within=NonNegativeReals, bounds=(0, 240))
@@ -110,17 +110,29 @@ def peak_shifting(hourly_data, charger_power, num_buses, buses_time_range, pv_ge
         if current_minute >= 60:
             current_minute = 0
             current_hour += 1
+            
+    new_charging_requirements = charging_requirements.copy()        
+    start_index = time_range1[0] * 4
+    if start_index + len(ebus_values) <= len(charging_requirements):
+        new_charging_requirements[start_index:start_index + len(ebus_values)] = ebus_values
+        
+    x_charging = range(len(new_charging_requirements))    
+        
+    
+    
     
     plt.figure(figsize=(15, 6))
-    plt.plot(time_labels, pv_values, label='PV Generation [kW]', linewidth=2)
-    plt.plot(time_labels, ebus_values, label='E-Bus Power [kW]', linewidth=2)
-    plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
-    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
-    plt.title('PV Generation and E-Bus Charging', fontsize=14, fontweight='bold')
-    plt.xticks(times) 
+    plt.plot(x_charging, pv_generation_15min[(day_of_year-1)*96 : day_of_year*96+32], label='PV Generation', linestyle='-', color='blue')
+    plt.plot(x_charging, new_charging_requirements, label='After DSM', linewidth=2, color='green')
+    plt.plot(x_charging, charging_requirements, label='Original', linestyle='--', linewidth=2, color='red')
+    plt.title(f'Day {day_of_year}')
+    plt.xlabel('Time of Day')
+    plt.ylabel('PV Generation (kW)')
+    plt.xticks(range(0, len(plot_time_slots), 4), plot_time_slots[::4], rotation=45, fontsize=10)
     plt.legend()
     plt.show()
+    
                     
-    return charging_rates, sum_energy_per_bus, sum_energy_per_time_slot                
+    return new_charging_requirements, sum_energy_per_bus, sum_power_per_time_slot                
 
         

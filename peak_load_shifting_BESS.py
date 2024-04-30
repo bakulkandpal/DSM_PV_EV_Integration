@@ -4,14 +4,15 @@ import os
 import matplotlib.pyplot as plt
 
 
-def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2, last_time_slot, case_pv):
+def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, charger_power, num_buses, buses_time_range, pv_generation_15min, day_of_year, time_range1, time_range2, last_time_slot, case_pv, plot_time_slots):
     
     bess_power_kW = bess_capacity_kWh*0.5  # Maximum charge/discharge power rating in kW. Assumed charging/discharging efficiency 100% as of now.
     bess_initial_soc = 0.5 * bess_capacity_kWh  # Initial SOC assumed 50% of capacity. Can be dynamic also.
     
     def time_str_to_slot_index(time_str):
         hours, minutes = map(int, time_str.split(':'))
-        return (hours - time_range1[0]) * 4 + minutes // 15  # Taking time_slot 12:00 as the base
+        # return (hours - time_range1[0]) * 4 + minutes // 15  # Taking time_slot 12:00 as the base
+        return (hours) * 4 + minutes // 15  # Taking time_slot 00:00 as the base
     
     num_time_slots = time_str_to_slot_index(last_time_slot) + 1
 
@@ -21,14 +22,17 @@ def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, ch
 
     model.buses = RangeSet(0, len(buses_time_range) - 1)
 
-    start_pv = day_of_year * 96 + time_range1[0]*4  
+    # start_pv = day_of_year * 96 + time_range1[0]*4  
+    start_pv = day_of_year * 96 
     end_pv = start_pv + num_time_slots  # Up to and including last time slot
-    # pv_generation = {i - start_pv: pv_generation_15min[i] for i in range(start_pv, end_pv)}  # Use this for actual PV data.
+    pv_generation = {i - start_pv: pv_generation_15min[i] for i in range(start_pv, end_pv)}  # Use this for actual PV data.
     
-    ebus_fixed = {i - time_range1[0]*4 : charging_requirements[i] for i in range(time_range1[0]*4, time_range1[0]*4+num_time_slots)} 
+    # ebus_fixed = {i - time_range1[0]*4 : charging_requirements[i] for i in range(time_range1[0]*4, time_range1[0]*4+num_time_slots)} 
+    ebus_fixed = {i : charging_requirements[i] for i in range(0, num_time_slots)} 
+
     
-    pv_values = case_pv  # Use this for case studies.
-    pv_generation = {i: pv for i, pv in enumerate(pv_values)}  # Use this for case studies.
+    # pv_values = case_pv  # Use this for case studies.
+    # pv_generation = {i: pv for i, pv in enumerate(pv_values)}  # Use this for case studies.
     
     model.pv = Param(model.time_slots, initialize=pv_generation)
     model.charging_rate = Var(model.buses, model.time_slots, within=NonNegativeReals, bounds=(0, 240))
@@ -86,9 +90,9 @@ def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, ch
     model.objective = Objective(rule=objective_rule, sense=minimize)
 
 
-    solver_path = r'C:\Users\Bakul\Downloads\Ipopt-3.11.1-win64-intel13.1\Ipopt-3.11.1-win64-intel13.1\bin\ipopt.exe'
-    solver = SolverFactory('ipopt', executable=solver_path)
-    # solver = SolverFactory('gurobi')
+    # solver_path = r'C:\Users\Bakul\Downloads\Ipopt-3.11.1-win64-intel13.1\Ipopt-3.11.1-win64-intel13.1\bin\ipopt.exe'
+    # solver = SolverFactory('ipopt', executable=solver_path)
+    solver = SolverFactory('gurobi')
     result = solver.solve(model, tee=True)
 
     print("Solver Status:", result.solver.status)
@@ -127,6 +131,7 @@ def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, ch
     times = list(pv_generation.keys())
     pv_values = [pv_generation[t] for t in times]
     ebus_values = [sum_power_per_time_slot.get(t, 0) for t in times]  
+    net_power = [ebus - pv + bess for pv, ebus, bess in zip(pv_values, ebus_values, bess_values)]
     
     end_time_str = last_time_slot
     end_hour, end_minutes = map(int, end_time_str.split(':'))
@@ -145,15 +150,45 @@ def peak_shifting_bess(bess_capacity_kWh, charging_requirements, hourly_data, ch
        
     
     plt.figure(figsize=(15, 6))
-    plt.plot(time_labels, pv_values, label='PV Generation', marker='o', linestyle='-', linewidth=2)
-    plt.plot(time_labels, ebus_values, label='E-Bus Charging', marker='x', linestyle='--', linewidth=2)
-    plt.plot(time_labels, bess_values, label='BESS Charging/Discharging', marker='^', linestyle='-.', linewidth=2)
+    plt.plot(time_labels, pv_values, label='PV Generation', linewidth=2, color='green')
     plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
     plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
-    plt.title('PV Generation E-Bus Charging and BESS', fontsize=14, fontweight='bold')
-    plt.xticks(time_labels, rotation=45) 
+    plt.title('PV Generation', fontsize=14, fontweight='bold')
+    plt.xticks(time_labels) 
     plt.legend()
     plt.tight_layout()  
+    plt.show()
+    
+    plt.figure(figsize=(15, 6))
+    plt.plot(time_labels, ebus_values, label='Energy Consumption', linewidth=2, color='orange')
+    plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
+    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
+    plt.ylim(0, 6200)
+    plt.title('Total Energy Consumption', fontsize=14, fontweight='bold')
+    plt.xticks(time_labels) 
+    plt.legend()
+    plt.tight_layout()  
+    plt.show()
+    
+    plt.figure(figsize=(15, 6))
+    plt.plot(time_labels, bess_values, label='BESS Charging/Discharging', linewidth=2, color='blue')
+    plt.axhline(y=0, color='red', linestyle='--') 
+    plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
+    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
+    plt.title('Schedule BESS', fontsize=14, fontweight='bold')
+    plt.xticks(time_labels) 
+    plt.legend()
+    plt.tight_layout()  
+    plt.show()
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(time_labels, net_power, label='Net Power', marker='o', linestyle='-')
+    plt.title('Net Power (Ebus + BESS - PV)', fontsize=14, fontweight='bold')
+    plt.xlabel('Time Slots', fontsize=12, fontweight='bold')
+    plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
+    plt.xticks(time_labels,)
+    plt.legend()
+    plt.tight_layout()
     plt.show()
                     
     return charging_rates, sum_energy_per_bus, sum_energy_per_time_slot                

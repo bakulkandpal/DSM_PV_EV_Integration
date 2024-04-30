@@ -145,6 +145,7 @@ class feeder_data_class:
         energy_requirement_per_slot = np.zeros(num_time_slots)
         energy_requirement_per_slot2 = np.zeros(num_time_slots)
         overflow_buses = 0
+        overflow_buses2 = 0
         actual_buses_charged_per_slot = np.zeros(num_time_slots, dtype=int)
         
         def after_first_before_second(slot, first_range, second_range):
@@ -157,7 +158,7 @@ class feeder_data_class:
         
         for i, slot in enumerate(time_slots):
             connected_buses = np.sum(charging_matrix[i]) + overflow_buses
-            connected_buses2 = np.sum(charging_matrix2[i]) + overflow_buses
+            connected_buses2 = np.sum(charging_matrix2[i]) + overflow_buses2
             
             if after_first_before_second(slot, self.time_range1, self.time_range2):
                 charger_power_for_slot = self.charger_power[0]
@@ -172,6 +173,7 @@ class feeder_data_class:
             energy_requirement_per_slot[i] = buses_charged * charger_power_for_slot if charger_power_for_slot else 0
             energy_requirement_per_slot2[i] = buses_charged2 * charger_power_for_slot if charger_power_for_slot else 0
             overflow_buses = max(0, connected_buses - self.num_chargers)
+            overflow_buses2 = max(0, connected_buses2 - self.num_chargers)
         
         
         combined_load_15min_day = feeder_load_15min[(self.day_of_year-1)*96:(self.day_of_year)*96 + 32] + energy_requirement_per_slot
@@ -215,7 +217,7 @@ class feeder_data_class:
         
 
         
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 8))  
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))  
         soc_plot = ax1.scatter(time_indices, initial_soc_individual, color='green', alpha=0.8, s=30, marker='o', label='Arrival Time SOC (%)')
         ax1.set_title(f'Individual E-Bus Charging Requirements ({self.battery_capacity} kWh Battery Capacity)', fontsize=14, fontweight='bold')
         ax1.set_xlabel('Time of Day', fontsize=12, fontweight='bold')
@@ -258,8 +260,10 @@ class feeder_data_class:
         plt.xlabel('Time of Day', fontsize=12, fontweight='bold')
         plt.xticks(range(0, len(plot_time_slots), 8), plot_time_slots[::8], rotation=45, fontsize=12)
         plt.ylabel('Power [kW]', fontsize=12, fontweight='bold')
+        plt.ylim(0, 6400)
         plt.legend(frameon=False, fontsize=12)
         plt.show()
+        
         
         plt.figure(figsize=(15, 10))
         plt.subplot(2, 1, 1)
@@ -339,5 +343,5 @@ class feeder_data_class:
         # plt.tight_layout()
         # plt.show()    
         
-        return energy_requirement_per_slot2, feeder_load_15min, buses_time_range
+        return energy_requirement_per_slot2, feeder_load_15min, buses_time_range, plot_time_slots
         
